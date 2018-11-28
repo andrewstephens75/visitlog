@@ -8,7 +8,6 @@ import (
 	"net/http"
 	"net/url"
 	"os"
-	"sync"
 )
 
 type urirecord struct {
@@ -16,8 +15,7 @@ type urirecord struct {
 }
 
 type visitlogserver struct {
-	lock sync.Mutex
-	db   map[string]urirecord
+	db Logdatabase
 }
 
 type vistresult struct {
@@ -62,18 +60,17 @@ func (s *visitlogserver) handleHit() http.HandlerFunc {
 			return
 		}
 
-		s.lock.Lock()
-		i, _ := s.db[realURI]
+		var record logrecord
 		if r.Method == "POST" {
-			i.count = i.count + 1
-			s.db[realURI] = i
+			record = s.db.updateURI(realURI)
+		} else {
+			record, _ = s.db.getURI(realURI)
 		}
-		s.lock.Unlock()
 
-		log.Print(fmt.Sprintf("%s %d", realURI, i.count))
+		log.Print(fmt.Sprintf("%s %d", realURI, record.count))
 
 		result := vistresult{CannonicalURI: realURI,
-			Count: i.count}
+			Count: record.count}
 		b, _ := json.Marshal(result)
 		w.Write(b)
 	}
@@ -89,8 +86,7 @@ func main() {
 	log.SetOutput(wrt)
 	defer f.Close()
 
-	vs := &visitlogserver{lock: sync.Mutex{},
-		db: make(map[string]urirecord)}
+	vs := &visitlogserver{db: *MakeLogDatabase()}
 
 	http.HandleFunc("/log", vs.handleHit())
 	log.Fatal(http.ListenAndServe(":8080", nil))
