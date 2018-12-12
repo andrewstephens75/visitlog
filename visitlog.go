@@ -87,6 +87,7 @@ func main() {
 	defer f.Close()
 
 	vs := &visitlogserver{db: *MakeLogDatabase()}
+	vs.db.LoadDatabase("testfile")
 
 	http.HandleFunc("/log", vs.handleHit())
 	log.Fatal(http.ListenAndServe(":8080", nil))

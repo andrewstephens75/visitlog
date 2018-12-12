@@ -51,6 +51,7 @@ func (ldb *Logdatabase) getURI(uri string) (logrecord, bool) {
 	return i, ok
 }
 
+// DumpDatabase - copies database to an array
 func (ldb *Logdatabase) DumpDatabase() ([]byte, error) {
 	ldb.lock.Lock()
 	defer ldb.lock.Unlock()
@@ -58,6 +59,18 @@ func (ldb *Logdatabase) DumpDatabase() ([]byte, error) {
 	return result, err
 }
 
+// DumpDatabaeToFile - dumps the database to a file
+func (ldb *Logdatabase) DumpDatabaeToFile(filename string) error {
+	contents, err := ldb.DumpDatabase()
+
+	if err != nil {
+		return err
+	}
+
+	return ioutil.WriteFile(filename, contents, 0666)
+}
+
+// LoadDatabase - loads from a file
 func (ldb *Logdatabase) LoadDatabase(filename string) {
 	file, e := ioutil.ReadFile(filename)
 	if e != nil {
