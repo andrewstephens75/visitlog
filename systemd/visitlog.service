@@ -8,6 +8,7 @@ Restart=always
 RestartSec=5s
 User=visitlog
 Group=visitlog
+WorkingDirectory=/home/deploy/
 
 ExecStart=/home/deploy/visitlog
 

@@ -67,12 +67,29 @@ func (s *visitlogserver) handleHit() http.HandlerFunc {
 			record, _ = s.db.getURI(realURI)
 		}
 
-		log.Print(fmt.Sprintf("%s %d", realURI, record.count))
+		log.Print(fmt.Sprintf("%s %d", realURI, record.Count))
 
 		result := vistresult{CannonicalURI: realURI,
-			Count: record.count}
+			Count: record.Count}
 		b, _ := json.Marshal(result)
 		w.Write(b)
+
+		s.db.DumpDatabaeToFile("visitlogdb")
+	}
+}
+
+func (s *visitlogserver) handleStats() http.HandlerFunc {
+
+	return func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != "GET" {
+			http.Error(w, "What?", http.StatusBadRequest)
+			return
+		}
+
+		result, _ := s.db.DumpDatabase()
+
+		w.Write(result)
+
 	}
 }
 
@@ -87,8 +104,9 @@ func main() {
 	defer f.Close()
 
 	vs := &visitlogserver{db: *MakeLogDatabase()}
-	vs.db.LoadDatabase("testfile")
+	vs.db.LoadDatabase("visitlogdb")
 
 	http.HandleFunc("/log", vs.handleHit())
+	http.HandleFunc("/stats", vs.handleStats())
 	log.Fatal(http.ListenAndServe(":8080", nil))
 }

@@ -9,7 +9,8 @@ import (
 )
 
 type logrecord struct {
-	count int
+	Count int
+	Title string
 }
 
 // Logdatabase - main database structure
@@ -37,8 +38,15 @@ func (ldb *Logdatabase) containsURI(uri string) bool {
 func (ldb *Logdatabase) updateURI(uri string) logrecord {
 	ldb.lock.Lock()
 	defer ldb.lock.Unlock()
-	i, _ := ldb.db[uri]
-	i.count = i.count + 1
+	i, exists := ldb.db[uri]
+
+	if !exists {
+		info := ValidateURL("https://sheep.horse" + uri)
+
+		i.Title = info.title
+	}
+
+	i.Count = i.Count + 1
 	ldb.db[uri] = i
 	return i
 }
@@ -74,7 +82,7 @@ func (ldb *Logdatabase) DumpDatabaeToFile(filename string) error {
 func (ldb *Logdatabase) LoadDatabase(filename string) {
 	file, e := ioutil.ReadFile(filename)
 	if e != nil {
-		log.Fatalf("Could not open database file")
+		log.Fatalf("Could not open database file: " + filename)
 		os.Exit(1)
 	}
 
@@ -83,6 +91,5 @@ func (ldb *Logdatabase) LoadDatabase(filename string) {
 	ldb.lock.Lock()
 	defer ldb.lock.Unlock()
 
-	ldb = &Logdatabase{lock: sync.Mutex{},
-		db: data}
+	ldb.db = data
 }
