@@ -15,7 +15,7 @@ type urirecord struct {
 }
 
 type visitlogserver struct {
-	db Logdatabase
+	db *Logdatabase
 }
 
 type vistresult struct {
@@ -72,9 +72,8 @@ func (s *visitlogserver) handleHit() http.HandlerFunc {
 		result := vistresult{CannonicalURI: realURI,
 			Count: record.Count}
 		b, _ := json.Marshal(result)
+		w.Header().Set("Content-Type", "application/json")
 		w.Write(b)
-
-		s.db.DumpDatabaeToFile("visitlogdb")
 	}
 }
 
@@ -88,6 +87,7 @@ func (s *visitlogserver) handleStats() http.HandlerFunc {
 
 		result, _ := s.db.DumpDatabase()
 
+		w.Header().Set("Content-Type", "application/json")
 		w.Write(result)
 
 	}
@@ -103,7 +103,7 @@ func main() {
 	log.SetOutput(wrt)
 	defer f.Close()
 
-	vs := &visitlogserver{db: *MakeLogDatabase()}
+	vs := &visitlogserver{db: MakeLogDatabase()}
 	vs.db.LoadDatabase("visitlogdb")
 
 	http.HandleFunc("/log", vs.handleHit())

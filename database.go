@@ -6,6 +6,7 @@ import (
 	"log"
 	"os"
 	"sync"
+	"time"
 )
 
 type logrecord struct {
@@ -15,15 +16,27 @@ type logrecord struct {
 
 // Logdatabase - main database structure
 type Logdatabase struct {
-	lock sync.Mutex
-	db   map[string]logrecord
+	lock     *sync.Mutex
+	db       map[string]logrecord
+	dirty    bool
+	sweeper  *time.Ticker
+	filename string
 }
 
 // MakeLogDatabase Create a new logdatabase
 func MakeLogDatabase() *Logdatabase {
-	r := &Logdatabase{lock: sync.Mutex{},
-		db: make(map[string]logrecord)}
-	return r
+	r := Logdatabase{lock: &sync.Mutex{},
+		db:    make(map[string]logrecord),
+		dirty: false}
+
+	r.sweeper = time.NewTicker(10 * time.Second)
+	go func() {
+		for {
+			<-r.sweeper.C
+			r.DumpDatabaseToFile("")
+		}
+	}()
+	return &r
 }
 
 // Checks that the map contains the URI
@@ -43,11 +56,15 @@ func (ldb *Logdatabase) updateURI(uri string) logrecord {
 	if !exists {
 		info := ValidateURL("https://sheep.horse" + uri)
 
+		if info.err != nil {
+			return logrecord{Title: "", Count: 0}
+		}
 		i.Title = info.title
 	}
 
 	i.Count = i.Count + 1
 	ldb.db[uri] = i
+	ldb.dirty = true
 	return i
 }
 
@@ -59,23 +76,40 @@ func (ldb *Logdatabase) getURI(uri string) (logrecord, bool) {
 	return i, ok
 }
 
-// DumpDatabase - copies database to an array
-func (ldb *Logdatabase) DumpDatabase() ([]byte, error) {
-	ldb.lock.Lock()
-	defer ldb.lock.Unlock()
+func (ldb *Logdatabase) marshalDatabase() ([]byte, error) {
 	result, err := json.Marshal(ldb.db)
 	return result, err
 }
 
-// DumpDatabaeToFile - dumps the database to a file
-func (ldb *Logdatabase) DumpDatabaeToFile(filename string) error {
-	contents, err := ldb.DumpDatabase()
+// DumpDatabase - copies database to an array
+func (ldb *Logdatabase) DumpDatabase() ([]byte, error) {
+	ldb.lock.Lock()
+	defer ldb.lock.Unlock()
+	return ldb.marshalDatabase()
+}
+
+// DumpDatabaseToFile - dumps the database to a file
+func (ldb *Logdatabase) DumpDatabaseToFile(filename string) error {
+	ldb.lock.Lock()
+	defer ldb.lock.Unlock()
+
+	if filename == "" {
+		filename = ldb.filename
+	}
+	if ldb.dirty == false {
+		return nil
+	}
+	contents, err := ldb.marshalDatabase()
 
 	if err != nil {
 		return err
 	}
 
-	return ioutil.WriteFile(filename, contents, 0666)
+	err = ioutil.WriteFile(filename, contents, 0666)
+	if err == nil {
+		ldb.dirty = false
+	}
+	return err
 }
 
 // LoadDatabase - loads from a file
@@ -92,4 +126,6 @@ func (ldb *Logdatabase) LoadDatabase(filename string) {
 	defer ldb.lock.Unlock()
 
 	ldb.db = data
+	ldb.dirty = false
+	ldb.filename = filename
 }
