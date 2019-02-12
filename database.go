@@ -77,7 +77,7 @@ func (ldb *Logdatabase) getURI(uri string) (logrecord, bool) {
 }
 
 func (ldb *Logdatabase) marshalDatabase() ([]byte, error) {
-	result, err := json.Marshal(ldb.db)
+	result, err := json.MarshalIndent(ldb.db, "", "  ")
 	return result, err
 }
 
