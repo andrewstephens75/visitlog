@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/json"
+	"errors"
 	"io/ioutil"
 	"log"
 	"os"
@@ -15,9 +16,11 @@ type logrecord struct {
 }
 
 // Logdatabase - main database structure
+// database is a map of maps
+// realm -> uri -> logrecord
 type Logdatabase struct {
 	lock     *sync.Mutex
-	db       map[string]logrecord
+	db       map[string]map[string]logrecord
 	dirty    bool
 	sweeper  *time.Ticker
 	filename string
@@ -26,7 +29,7 @@ type Logdatabase struct {
 // MakeLogDatabase Create a new logdatabase
 func MakeLogDatabase() *Logdatabase {
 	r := Logdatabase{lock: &sync.Mutex{},
-		db:    make(map[string]logrecord),
+		db:    make(map[string]map[string]logrecord),
 		dirty: false}
 
 	r.sweeper = time.NewTicker(10 * time.Second)
@@ -40,39 +43,60 @@ func MakeLogDatabase() *Logdatabase {
 }
 
 // Checks that the map contains the URI
-func (ldb *Logdatabase) containsURI(uri string) bool {
+func (ldb *Logdatabase) containsURI(uri string, realm string) bool {
 	ldb.lock.Lock()
 	defer ldb.lock.Unlock()
-	_, ok := ldb.db[uri]
+
+	realmMap, ok := ldb.db[realm]
+	if ok {
+		_, ok = realmMap[uri]
+	}
 	return ok
 }
 
 // Updates the database
-func (ldb *Logdatabase) updateURI(uri string) logrecord {
+func (ldb *Logdatabase) updateURI(uri string, realm string) logrecord {
 	ldb.lock.Lock()
 	defer ldb.lock.Unlock()
-	i, exists := ldb.db[uri]
+	realmMap, exists := ldb.db[realm]
 
 	if !exists {
-		info := ValidateURL("https://sheep.horse" + uri)
+		return logrecord{Title: "", Count: 0}
+	}
 
-		if info.err != nil {
+	i, exists := realmMap[uri]
+
+	if !exists {
+		// special case handling for the "hit" realm
+		if realm == "hit" {
+			info := ValidateURL("https://sheep.horse" + uri)
+
+			if info.err != nil {
+				return logrecord{Title: "", Count: 0}
+			}
+			i.Title = info.title
+		} else {
 			return logrecord{Title: "", Count: 0}
 		}
-		i.Title = info.title
 	}
 
 	i.Count = i.Count + 1
-	ldb.db[uri] = i
+	realmMap[uri] = i
 	ldb.dirty = true
 	return i
 }
 
 // Gets a value from the database
-func (ldb *Logdatabase) getURI(uri string) (logrecord, bool) {
+func (ldb *Logdatabase) getURI(uri string, realm string) (logrecord, bool) {
 	ldb.lock.Lock()
 	defer ldb.lock.Unlock()
-	i, ok := ldb.db[uri]
+
+	var i logrecord
+	realmdb, ok := ldb.db[realm]
+	if !ok {
+		return i, ok
+	}
+	i, ok = realmdb[uri]
 	return i, ok
 }
 
@@ -81,11 +105,19 @@ func (ldb *Logdatabase) marshalDatabase() ([]byte, error) {
 	return result, err
 }
 
-// DumpDatabase - copies database to an array
-func (ldb *Logdatabase) DumpDatabase() ([]byte, error) {
+// DumpDatabaseRealm - copies part of the database to an array
+func (ldb *Logdatabase) DumpDatabaseRealm(realm string) ([]byte, error) {
 	ldb.lock.Lock()
 	defer ldb.lock.Unlock()
-	return ldb.marshalDatabase()
+
+	realmdb, found := ldb.db[realm]
+	if !found {
+		return nil, errors.New("Realm not found")
+	}
+
+	result, err := json.MarshalIndent(realmdb, "", "  ")
+
+	return result, err
 }
 
 // DumpDatabaseToFile - dumps the database to a file
@@ -120,7 +152,7 @@ func (ldb *Logdatabase) LoadDatabase(filename string) {
 		os.Exit(1)
 	}
 
-	var data map[string]logrecord
+	var data map[string]map[string]logrecord
 	json.Unmarshal(file, &data)
 	ldb.lock.Lock()
 	defer ldb.lock.Unlock()

@@ -62,9 +62,9 @@ func (s *visitlogserver) handleHit() http.HandlerFunc {
 
 		var record logrecord
 		if r.Method == "POST" {
-			record = s.db.updateURI(realURI)
+			record = s.db.updateURI(realURI, "hit")
 		} else {
-			record, _ = s.db.getURI(realURI)
+			record, _ = s.db.getURI(realURI, "hit")
 		}
 
 		log.Print(fmt.Sprintf("%s %d", realURI, record.Count))
@@ -85,7 +85,7 @@ func (s *visitlogserver) handleStats() http.HandlerFunc {
 			return
 		}
 
-		result, _ := s.db.DumpDatabase()
+		result, _ := s.db.DumpDatabaseRealm("hit")
 
 		w.Header().Set("Content-Type", "application/json")
 		w.Write(result)
