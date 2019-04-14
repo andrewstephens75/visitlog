@@ -130,7 +130,7 @@ func (s *visitlogserver) handleAnswer() http.HandlerFunc {
 
 		result, err := s.qm.SubmitAnswer(ar.QuizID, ar.Question, ar.AnswerID)
 		if err != nil {
-			log.Printf("QUIZ ERROR %q", err.Error())
+			log.Printf("QUIZ ERROR %s", err.Error())
 			http.Error(w, "What?", http.StatusInternalServerError)
 			return
 		}
@@ -153,7 +153,7 @@ func main() {
 	log.SetOutput(wrt)
 	defer f.Close()
 
-	vs := &visitlogserver{db: MakeLogDatabase(), qm: MakeQuizManager(QuizDatabaseDirectory{path: "."})}
+	vs := &visitlogserver{db: MakeLogDatabase(), qm: MakeQuizManager(QuizDatabaseDirectory{path: "quizes"})}
 	vs.db.LoadDatabase("visitlogdb")
 
 	http.HandleFunc("/log", vs.handleHit())

@@ -145,7 +145,6 @@ func (qm QuizManager) getQuiz(quizID string) (*quiz, error) {
 func (qm QuizManager) saveDirtyQuizes() {
 	qm.lock.Lock()
 	defer qm.lock.Unlock()
-	fmt.Printf("Saving Dirty Datbases\n")
 	for k, v := range qm.quizes {
 		if v.dirty == true {
 			err := qm.database.SaveQuiz(v, k)
@@ -162,27 +161,30 @@ func (qm QuizManager) saveDirtyQuizes() {
 func (qm *QuizManager) SubmitAnswer(quizID string, questionNum int, answerID string) (*question, error) {
 	qm.lock.Lock()
 	defer qm.lock.Unlock()
+
+	idString := fmt.Sprintf("%s[%d]=%q", quizID, questionNum, answerID)
+
 	quiz, err := qm.getQuiz(quizID)
 	if err != nil {
-		return nil, fmt.Errorf("quizID %q not found", quizID)
+		return nil, fmt.Errorf("%s quizID %q not found", idString, quizID)
 	}
 
 	if (questionNum < 0) || (questionNum >= len(quiz.Questions)) {
-		return nil, fmt.Errorf("question %d out of bounds", questionNum)
+		return nil, fmt.Errorf("%s question %d out of bounds", idString, questionNum)
 	}
 
 	q := quiz.Questions[questionNum]
 
 	foundAnswer, ok := q.Answers[answerID]
 	if !ok {
-		return nil, fmt.Errorf("answerID %q not found", answerID)
+		return nil, fmt.Errorf("%s answerID %q not found", idString, answerID)
 	}
 
 	foundAnswer.Count = foundAnswer.Count + 1
 	quiz.dirty = true
 	q.Answers[answerID] = foundAnswer
 
-	log.Printf("QUIZ %q[%d] = %q", quizID, questionNum, answerID)
+	log.Printf("QUIZ %s total %d", idString, foundAnswer.Count)
 
 	answersCopy := make(map[string]answer)
 	for k, v := range q.Answers {
