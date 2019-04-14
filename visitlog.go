@@ -16,6 +16,7 @@ type urirecord struct {
 
 type visitlogserver struct {
 	db *Logdatabase
+	qm *QuizManager
 }
 
 type vistresult struct {
@@ -93,6 +94,55 @@ func (s *visitlogserver) handleStats() http.HandlerFunc {
 	}
 }
 
+func (s *visitlogserver) handleAnswer() http.HandlerFunc {
+
+	return func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != "POST" {
+			http.Error(w, "What? Require POST", http.StatusBadRequest)
+			return
+		}
+
+		contentType := r.Header.Get("Content-Type")
+		if contentType != "application/json" {
+			http.Error(w, "What? Bad content type", http.StatusBadRequest)
+			return
+		}
+
+		type AnswerRequest struct {
+			QuizID   string
+			Question int
+			AnswerID string
+		}
+
+		var ar AnswerRequest
+
+		decoder := json.NewDecoder(r.Body)
+		err := decoder.Decode(&ar)
+		if err != nil {
+			http.Error(w, "What? Body did not decode", http.StatusBadRequest)
+			return
+		}
+
+		if (ar.QuizID == "") || (ar.AnswerID == "") {
+			http.Error(w, "What? Body did not contain the required attributes", http.StatusBadRequest)
+			return
+		}
+
+		result, err := s.qm.SubmitAnswer(ar.QuizID, ar.Question, ar.AnswerID)
+		if err != nil {
+			log.Printf("QUIZ ERROR %q", err.Error())
+			http.Error(w, "What?", http.StatusInternalServerError)
+			return
+		}
+
+		jsonResult, _ := json.MarshalIndent(result, "", "  ")
+
+		w.Header().Set("Content-Type", "application/json")
+		w.Write(jsonResult)
+
+	}
+}
+
 func main() {
 
 	f, err := os.OpenFile("/var/log/visitlog", os.O_RDWR|os.O_CREATE|os.O_APPEND, 0666)
@@ -103,10 +153,11 @@ func main() {
 	log.SetOutput(wrt)
 	defer f.Close()
 
-	vs := &visitlogserver{db: MakeLogDatabase()}
+	vs := &visitlogserver{db: MakeLogDatabase(), qm: MakeQuizManager(QuizDatabaseDirectory{path: "."})}
 	vs.db.LoadDatabase("visitlogdb")
 
 	http.HandleFunc("/log", vs.handleHit())
 	http.HandleFunc("/stats", vs.handleStats())
+	http.HandleFunc("/quiz/submit", vs.handleAnswer())
 	log.Fatal(http.ListenAndServe(":8080", nil))
 }

@@ -123,10 +123,31 @@ func TestSavingAndLoading(t *testing.T) {
 
 	qm.quizes = make(map[string]quiz)
 
-	question, err := qm.SubmitAnswer("quiz1", 0, "fish")
+	_, err := qm.SubmitAnswer("quiz1", 0, "fish")
 	if err != nil {
 		t.Errorf("Got error " + err.Error())
 	}
-	fmt.Printf("%v", question)
+}
 
+func TestIllegalFiles(t *testing.T) {
+	db := QuizDatabaseDirectory{path: "validpath"}
+
+	var tests = []struct {
+		name         string
+		fullPathname string
+		hasError     bool
+	}{{"quiz", "validpath/quiz.json", false},
+		{"back\\slash", "", true},
+		{"pipe|pipe", "", true}}
+
+	for _, test := range tests {
+		name, err := db.getFullPathname(test.name)
+		if err != nil && test.hasError == false {
+			t.Errorf("Expected no error with %q", test.name)
+		} else if err == nil && test.hasError == true {
+			t.Errorf("Expected an error with %q", test.name)
+		} else if name != test.fullPathname {
+			t.Errorf("Expect %q == %q", test.name, name)
+		}
+	}
 }

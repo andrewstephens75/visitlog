@@ -7,6 +7,8 @@ import (
 	"log"
 	"path"
 	"strings"
+	"sync"
+	"time"
 )
 
 type answer struct {
@@ -36,30 +38,31 @@ type cmdUpdateResponse struct {
 // QuizDatabase - exposes an interface for loading and saving quizes
 type QuizDatabase interface {
 	LoadQuiz(name string) (quiz, error)
-	SaveQuiz(q quiz, name string) error
+	SaveQuiz(q *quiz, name string) error
 }
 
 type QuizDatabaseDirectory struct {
 	path string
 }
 
-func (qdb QuizDatabaseDirectory) getFullPathname(name string) string {
+func (qdb QuizDatabaseDirectory) getFullPathname(name string) (string, error) {
+	const illegals = "./\\%$!@| \"<>?"
 
-	sanitise := func(r rune) rune {
-		const illegals = "./\\%$!@| \"<>?"
-		if strings.ContainsRune(illegals, r) {
-			return -1
+	for _, r := range illegals {
+		if strings.ContainsRune(name, r) {
+			return "", fmt.Errorf("%q contains illegal characters", name)
 		}
-		return r
 	}
-	sanitisedName := strings.Map(sanitise, name)
 
-	return path.Join(qdb.path, sanitisedName) + ".json"
+	return (path.Join(qdb.path, name) + ".json"), nil
 }
 
 // LoadQuiz - returns a quiz
 func (qdb QuizDatabaseDirectory) LoadQuiz(name string) (quiz, error) {
-	fullname := qdb.getFullPathname(name)
+	fullname, e := qdb.getFullPathname(name)
+	if e != nil {
+		return quiz{}, e
+	}
 
 	file, e := ioutil.ReadFile(fullname)
 	if e != nil {
@@ -77,8 +80,11 @@ func (qdb QuizDatabaseDirectory) LoadQuiz(name string) (quiz, error) {
 }
 
 // SaveQuiz - saves quiz to a file
-func (qdb QuizDatabaseDirectory) SaveQuiz(q quiz, name string) error {
-	fullname := qdb.getFullPathname(name)
+func (qdb QuizDatabaseDirectory) SaveQuiz(q *quiz, name string) error {
+	fullname, e := qdb.getFullPathname(name)
+	if e != nil {
+		return e
+	}
 
 	buffer, err := json.MarshalIndent(q, "", " ")
 	if err != nil {
@@ -91,33 +97,55 @@ func (qdb QuizDatabaseDirectory) SaveQuiz(q quiz, name string) error {
 
 // QuizManager Managers the quizes and exposes the results via channels
 type QuizManager struct {
+	lock     *sync.Mutex
 	database QuizDatabase
-	quizes   map[string]quiz
+	quizes   map[string]*quiz
+	sweeper  *time.Ticker
 }
 
 // MakeQuizManager - create a quizmanager
 func MakeQuizManager(db QuizDatabase) *QuizManager {
-	r := QuizManager{database: db,
-		quizes: make(map[string]quiz)}
+	r := QuizManager{lock: &sync.Mutex{},
+		database: db,
+		quizes:   make(map[string]*quiz),
+		sweeper:  time.NewTicker(10 * time.Second)}
+
+	go func() {
+		for {
+			<-r.sweeper.C
+			r.saveDirtyQuizes()
+		}
+	}()
+
 	return &r
 }
 
-func (qm QuizManager) getQuiz(quizID string) (quiz, error) {
-	var result quiz
+func (qm QuizManager) shutdown() {
+	qm.sweeper.Stop()
+	qm.saveDirtyQuizes()
+	qm.database = nil
+	qm.quizes = nil
+}
+
+func (qm QuizManager) getQuiz(quizID string) (*quiz, error) {
+	var result *quiz
 	result, ok := qm.quizes[quizID]
 	if !ok {
 		result, err := qm.database.LoadQuiz(quizID)
 		if err != nil {
-			return quiz{}, err
+			return nil, err
 		}
 
-		qm.quizes[quizID] = result
+		qm.quizes[quizID] = &result
 		return qm.quizes[quizID], nil
 	}
 	return result, nil
 }
 
 func (qm QuizManager) saveDirtyQuizes() {
+	qm.lock.Lock()
+	defer qm.lock.Unlock()
+	fmt.Printf("Saving Dirty Datbases\n")
 	for k, v := range qm.quizes {
 		if v.dirty == true {
 			err := qm.database.SaveQuiz(v, k)
@@ -131,13 +159,14 @@ func (qm QuizManager) saveDirtyQuizes() {
 }
 
 // SubmitAnswer - submit an answer, return all the answers to the same question
-func (qm QuizManager) SubmitAnswer(quizID string, questionNum int, answerID string) (*question, error) {
+func (qm *QuizManager) SubmitAnswer(quizID string, questionNum int, answerID string) (*question, error) {
+	qm.lock.Lock()
+	defer qm.lock.Unlock()
 	quiz, err := qm.getQuiz(quizID)
 	if err != nil {
 		return nil, fmt.Errorf("quizID %q not found", quizID)
 	}
 
-	fmt.Printf("QUIZ %v\n", quiz)
 	if (questionNum < 0) || (questionNum >= len(quiz.Questions)) {
 		return nil, fmt.Errorf("question %d out of bounds", questionNum)
 	}
@@ -153,6 +182,8 @@ func (qm QuizManager) SubmitAnswer(quizID string, questionNum int, answerID stri
 	quiz.dirty = true
 	q.Answers[answerID] = foundAnswer
 
+	log.Printf("QUIZ %q[%d] = %q", quizID, questionNum, answerID)
+
 	answersCopy := make(map[string]answer)
 	for k, v := range q.Answers {
 		answersCopy[k] = v
@@ -166,6 +197,8 @@ func (qm QuizManager) SubmitAnswer(quizID string, questionNum int, answerID stri
 
 // GetQuizeIDs - returns the IDs of all quizes
 func (qm QuizManager) GetQuizeIDs() []string {
+	qm.lock.Lock()
+	defer qm.lock.Unlock()
 	var r []string
 	for k := range qm.quizes {
 		r = append(r, k)
@@ -175,6 +208,8 @@ func (qm QuizManager) GetQuizeIDs() []string {
 
 // GetQuizResults - returns a copy of the list of questions in the quiz
 func (qm QuizManager) GetQuizResults(quizID string) ([]question, error) {
+	qm.lock.Lock()
+	defer qm.lock.Unlock()
 	quiz, err := qm.getQuiz(quizID)
 	if err != nil {
 		return nil, fmt.Errorf("quizID %q not found", quizID)
