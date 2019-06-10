@@ -34,9 +34,19 @@ func MakeLogDatabase() *Logdatabase {
 
 	r.sweeper = time.NewTicker(10 * time.Second)
 	go func() {
+		handledError := false
 		for {
 			<-r.sweeper.C
-			r.DumpDatabaseToFile("")
+			err := r.DumpDatabaseToFile("")
+			if err != nil {
+				if handledError == false {
+					log.Printf("Error when saving database %s", err.Error())
+					handledError = true
+				}
+			} else {
+				handledError = true
+			}
+
 		}
 	}()
 	return &r

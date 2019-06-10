@@ -2,6 +2,7 @@ package main
 
 import (
 	"errors"
+	"html"
 	"io"
 	"io/ioutil"
 	"log"
@@ -31,12 +32,12 @@ func ValidateURL(url string) URLInfo {
 	}
 
 	limitedReader := io.LimitReader(res.Body, 8*1024)
-	html, err := ioutil.ReadAll(limitedReader)
+	page, err := ioutil.ReadAll(limitedReader)
 	if err != nil {
 		return URLInfo{title: "", err: err}
 	}
 
-	matches := regex.FindStringSubmatch(string(html))
+	matches := regex.FindStringSubmatch(string(page))
 	var title string
 
 	title = url
@@ -44,5 +45,6 @@ func ValidateURL(url string) URLInfo {
 		title = matches[1]
 	}
 
+	title = html.UnescapeString(title)
 	return URLInfo{title: title, err: nil}
 }
