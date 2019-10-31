@@ -103,11 +103,7 @@ func (ldb *Logdatabase) updateURI(uri string, realm string) logrecord {
 	return i
 }
 
-// Gets a value from the database
-func (ldb *Logdatabase) getURI(uri string, realm string) (logrecord, bool) {
-	ldb.lock.Lock()
-	defer ldb.lock.Unlock()
-
+func (ldb *Logdatabase) getURINoLock(uri string, realm string) (logrecord, bool) {
 	var i logrecord
 	realmdb, ok := ldb.db[realm]
 	if !ok {
@@ -115,6 +111,14 @@ func (ldb *Logdatabase) getURI(uri string, realm string) (logrecord, bool) {
 	}
 	i, ok = realmdb[uri]
 	return i, ok
+}
+
+// Gets a value from the database
+func (ldb *Logdatabase) getURI(uri string, realm string) (logrecord, bool) {
+	ldb.lock.Lock()
+	defer ldb.lock.Unlock()
+
+	return ldb.getURINoLock(uri, realm)
 }
 
 func (ldb *Logdatabase) marshalDatabase() ([]byte, error) {
@@ -185,6 +189,14 @@ func (ldb *Logdatabase) DumpRollingLog() ([]byte, error) {
 	defer ldb.lock.Unlock()
 
 	rollingLogCounts := ldb.rollingLog.GetAllCounts()
-	result, err := json.MarshalIndent(rollingLogCounts, "", "  ")
+
+	data := make(map[string]logrecord)
+
+	for k, v := range rollingLogCounts {
+		r, _ := ldb.getURINoLock(k, "hit")
+		r.Count = v
+		data[k] = r
+	}
+	result, err := json.MarshalIndent(data, "", "  ")
 	return result, err
 }
