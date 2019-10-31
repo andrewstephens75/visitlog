@@ -94,6 +94,20 @@ func (s *visitlogserver) handleStats() http.HandlerFunc {
 	}
 }
 
+func (s *visitlogserver) handleLastDayStats() http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != "GET" {
+			http.Error(w, "What?", http.StatusBadRequest)
+			return
+		}
+
+		result, _ := s.db.DumpRollingLog()
+
+		w.Header().Set("Content-Type", "application/json")
+		w.Write(result)
+	}
+}
+
 func (s *visitlogserver) handleAnswer() http.HandlerFunc {
 
 	return func(w http.ResponseWriter, r *http.Request) {
@@ -159,5 +173,6 @@ func main() {
 	http.HandleFunc("/log", vs.handleHit())
 	http.HandleFunc("/stats", vs.handleStats())
 	http.HandleFunc("/quiz/submit", vs.handleAnswer())
+	http.HandleFunc("/recentstats", vs.handleLastDayStats())
 	log.Fatal(http.ListenAndServe(":8080", nil))
 }

@@ -19,18 +19,21 @@ type logrecord struct {
 // database is a map of maps
 // realm -> uri -> logrecord
 type Logdatabase struct {
-	lock     *sync.Mutex
-	db       map[string]map[string]logrecord
-	dirty    bool
-	sweeper  *time.Ticker
-	filename string
+	lock       *sync.Mutex
+	db         map[string]map[string]logrecord
+	dirty      bool
+	sweeper    *time.Ticker
+	filename   string
+	rollingLog RollingLog
 }
 
 // MakeLogDatabase Create a new logdatabase
 func MakeLogDatabase() *Logdatabase {
 	r := Logdatabase{lock: &sync.Mutex{},
-		db:    make(map[string]map[string]logrecord),
-		dirty: false}
+		db:         make(map[string]map[string]logrecord),
+		dirty:      false,
+		rollingLog: MakeRollingLog(time.Hour * 24),
+	}
 
 	r.sweeper = time.NewTicker(10 * time.Second)
 	go func() {
@@ -88,6 +91,10 @@ func (ldb *Logdatabase) updateURI(uri string, realm string) logrecord {
 		} else {
 			return logrecord{Title: "", Count: 0}
 		}
+	}
+
+	if realm == "hit" {
+		ldb.rollingLog.AddEntry(uri)
 	}
 
 	i.Count = i.Count + 1
@@ -170,4 +177,14 @@ func (ldb *Logdatabase) LoadDatabase(filename string) {
 	ldb.db = data
 	ldb.dirty = false
 	ldb.filename = filename
+}
+
+// DumpRollingLog - json representation of the rolling log
+func (ldb *Logdatabase) DumpRollingLog() ([]byte, error) {
+	ldb.lock.Lock()
+	defer ldb.lock.Unlock()
+
+	rollingLogCounts := ldb.rollingLog.GetAllCounts()
+	result, err := json.MarshalIndent(rollingLogCounts, "", "  ")
+	return result, err
 }
