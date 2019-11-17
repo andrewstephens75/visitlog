@@ -2,7 +2,9 @@
 
 A very simple analytics service with no dependencies, written in golang. This is what I run on my [blog/homepage](https://sheep.horse) to keep track of visits. I could use a third-party analytics service but I abhore sending data about my users to random companies.
 
-You can see the data that Visitlog collects: [sheep.horse Visitor Statistics](https://sheep.horse/visitor_statistics.html)
+I am not really expected that this will meet anyone elses needs. If you are looking for a full featured analytics package then better options exist.
+
+You can see the data that visitlog collects: [sheep.horse Visitor Statistics](https://sheep.horse/visitor_statistics.html)
 
 ## Goals
 
