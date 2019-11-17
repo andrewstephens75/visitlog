@@ -12,6 +12,9 @@ You can see the data that Visitlog collects: [sheep.horse Visitor Statistics](ht
 * Very simple data structures
 * Easily modifiable  
 * Safe and secure
+* Reasonably scalable, where "reasonably" means able to handle say 10000 hits per day. This is pathetic for big sites but more than enough for my needs.
+
+See [this blog post](https://sheep.horse/2019/1/the_world%27s_worst_web_analytics.html) for my initial rationale.
 
 ## Installation
 
@@ -26,3 +29,11 @@ Create a file named `visitlogdb` in the same directory. Edit it so that it conta
 ```
 
 This is somewhat of a misfeature. Visitlog should create this file itself on first startup.
+
+A systemd .service file is provided in the systemd directory.
+
+## Undocumented Features
+
+This functionality exists but is so far undocumented.
+
+* Quizzes
